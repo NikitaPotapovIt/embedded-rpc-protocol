@@ -4,7 +4,7 @@
 
 # Embedded RPC Protocol over UART
 
-**Язык:** C (стандарт C11/C17)
+**Язык:** C++
 **Платформа:** Любой микроконтроллер (ARM Cortex-M, AVR, ESP32, etc.)
 **Интерфейс:** UART (Universal Asynchronous Receiver-Transmitter)
 **RTOS:** FreeRTOS
