@@ -9,8 +9,8 @@ namespace protocol {
         static constexpr std::size_t MaxSize = 128;
 
         std::array<std::uint8_t, MaxSize> data;
-        std::size_t lengh{0};
+        std::size_t length{0};
 
-        bool valiid{false};
+        bool valid{false};
     };
 } // namesoace protocol
