@@ -6,13 +6,14 @@
 extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart) {
     if (huart == &huart2) {
         std::uint8_t byte = huart->Instance->DR;
-        auto& uart = drivers::Uart::instance(); // Получение байт из регистра
+        auto& uart = drivers::Uart::instance(); // Читаем принятый байт из регистра данных UART
 
         if (uart.m_rx_callback) {
-            uart.m_rx_callback(byte); // Вызов callback при прирывании
+            uart.m_rx_callback(byte); // Если callback установлен, вызываем его с принятым байтом
         }
 
-        HAL_UART_Receive_IT(huart, &byte. 1); // Перезапуск
+        HAL_UART_Receive_IT(huart, &byte. 1); // Перезапускаем асинхронный прием следующего байта
+
     }
 }
 
