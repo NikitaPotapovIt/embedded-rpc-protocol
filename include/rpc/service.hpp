@@ -1,38 +1,35 @@
-#include once
+#pragma once
 #include <functional>
 #include <string>
 #include <unordered_map>
-#include "./rpc/types.hpp"
+#include "rpc/types.hpp"
 #include "../utils/noncopyable.hpp"
 #include "../utils/allocator.hpp"
 
+namespace rpc {
 
-namespace rcp {
-
-    class Service : utils::NonCopyable {
+    class Service : private utils::NonCopyable {
+    public:
+        using Handler = std::function<void(const Message&, Message&)>;
         
-        public:
-        using Handler = std::function<void(const uint8_t* args, uint16_t len, 
-            uint8_t* result, uint16_t* result_len)>;
-
         static Service& instance() {
             static Service instance;
             return instance;
         }
-
-        // Регистрация обработчика по имени функции
-        void register_handler(const std::string& name, Handler handler);
-
-        // Оновной метод обработки входящего пакета
-        void handle_packet(const protocol::Packet& packet);
-
-        // Метод для отправки отчета
-        void send_response(uint8_t sequence_number, const uint8_t* data, uint16_t length);
-
-        private:
+        
+        bool register_handler(const std::string& name, Handler handler);
+        void process_message(const Message& request);
+        void send_response(const Message& response);
+        
+    private:
         Service() = default;
-
-        std::unordered_map<std::string, Handler> m_handlers;
-
+        
+        std::unordered_map<
+            std::string, 
+            Handler,
+            std::hash<std::string>,
+            std::equal_to<std::string>,
+            utils::StaticAllocator<std::pair<const std::string, Handler>, 32>
+        > m_handlers;
     };
 } // namespace rpc
