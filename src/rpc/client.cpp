@@ -5,7 +5,7 @@
 
 namespace rpc {
 
-Client::Client(drivers::Uart& uart, protocol::Parser& parser) 
+Client::Client(drivers::Uart& uart, protocol::Parser& parser)
     : m_uart(uart), m_parser(parser), m_sequence(0), m_response_queue(xQueueCreate(10, sizeof(protocol::Packet))) {}
 
 bool Client::wait_response(protocol::Packet& response, std::uint8_t seq, TickType_t timeout) {
@@ -46,20 +46,27 @@ Result Client::call(const std::string& function_name, Args... args) {
 
     std::tuple<Args...> args_tuple{args...};
     Serializer::serialize_tuple(args_tuple, buffer + offset);
-    packet.data_length = offset + Serializer::offset_of<sizeof...(Args), Args...>();
+    packet.data_length = offset + Serializer::tuple_size<Args...>();
     std::memcpy(packet.data, buffer, packet.data_length);
 
     if (send_message(packet)) {
         protocol::Packet response;
         if (wait_response(response, packet.seq, pdMS_TO_TICKS(1000))) {
             if (response.type == MessageType::Response) {
-                return Serializer::deserialize<Result>(response.data + response.func_name.size() + 2);
+                if constexpr (!std::is_void_v<Result>) {
+                    return Serializer::deserialize<Result>(response.data + response.func_name.size() + 2);
+                }
             } else if (response.type == MessageType::Error) {
-                return Result{};
+                if constexpr (!std::is_void_v<Result>) {
+                    return Result{};
+                }
             }
         }
     }
-    return Result{};
+    if constexpr (!std::is_void_v<Result>) {
+        return Result{};
+    }
+    return;
 }
 
 template<typename... Args>
@@ -78,7 +85,7 @@ void Client::stream_call(const std::string& function_name, Args... args) {
 
     std::tuple<Args...> args_tuple{args...};
     Serializer::serialize_tuple(args_tuple, buffer + offset);
-    packet.data_length = offset + Serializer::offset_of<sizeof...(Args), Args...>();
+    packet.data_length = offset + Serializer::tuple_size<Args...>();
     std::memcpy(packet.data, buffer, packet.data_length);
 
     send_message(packet);

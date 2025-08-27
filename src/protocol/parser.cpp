@@ -1,21 +1,21 @@
 #include "../../include/protocol/parser.hpp"
 #include "../../include/protocol/crc.hpp"
-#include "../../include/rpc/types.hpp"
 
 namespace protocol {
 
-Parser::Parser(drivers::Uart& uart, PacketHandler handler) 
-    : m_uart(uart), m_handler(handler), m_state(State::GetHeader), m_index(0) {}
+Parser::Parser(drivers::Uart& uart, PacketHandler handler, void* user_data)
+    : m_uart(uart), m_handler(handler), m_user_data(user_data) {
+    m_uart.set_rx_callback([](std::uint8_t byte, void* arg) {
+        static_cast<Parser*>(arg)->process_byte(byte);
+    }, this);
+}
 
 void Parser::process_byte(std::uint8_t byte) {
     switch (m_state) {
         case State::GetHeader:
             if (byte == 0xFA) {
-                m_packet.valid = true;
-                m_state = State::GetLengthLow;
-                m_index = 0;
-            } else {
                 m_packet.valid = false;
+                m_state = State::GetLengthLow;
             }
             break;
 
@@ -31,28 +31,21 @@ void Parser::process_byte(std::uint8_t byte) {
 
         case State::GetHeaderCrc:
             m_packet.header_crc = byte;
+            m_index = 0;
             m_state = State::GetDataStart;
             break;
 
         case State::GetDataStart:
-            if (byte == 0xFB) {
-                m_state = State::GetData;
-            } else {
-                m_packet.valid = false;
-                m_state = State::GetHeader;
-            }
+            m_packet.seq = byte;
+            m_packet.data[m_index++] = byte;
+            m_state = State::GetData;
             break;
 
         case State::GetData:
-            if (m_index < m_packet.length && m_index < Packet::MaxSize) {
+            if (m_index < m_packet.length) {
                 m_packet.data[m_index++] = byte;
-                if (byte == 0) { // Terminator for function name
-                    m_packet.func_name = std::string(reinterpret_cast<const char*>(m_packet.data), m_index - 1);
-                    m_packet.type = static_cast<rpc::MessageType>(m_packet.data[0]);
-                }
             }
             if (m_index >= m_packet.length) {
-                m_packet.data_length = m_index;
                 m_state = State::GetFooterCrc;
             }
             break;
@@ -63,11 +56,14 @@ void Parser::process_byte(std::uint8_t byte) {
             break;
 
         case State::GetStopByte:
-            if (byte == 0xFE && Crc::validate(m_packet)) {
-                m_handler(m_packet);
+            if (byte == 0xFB) {
+                m_packet.valid = Crc::validate(m_packet);
+                m_packet.data_length = m_index;
+                if (m_packet.valid && m_handler) {
+                    m_handler(m_packet, m_user_data);
+                }
             }
             m_state = State::GetHeader;
-            m_packet = Packet{};
             break;
     }
 }

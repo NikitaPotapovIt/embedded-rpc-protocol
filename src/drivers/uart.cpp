@@ -6,7 +6,7 @@ namespace drivers {
 
 Uart* Uart::global_uart_instance = nullptr;
 
-Uart::Uart(UART_HandleTypeDef* huart) : m_huart(huart), m_rx_queue(nullptr), m_rx_callback(nullptr), m_rx_byte(0) {}
+Uart::Uart(UART_HandleTypeDef* huart) : m_huart(huart), m_rx_queue(nullptr), m_rx_callback(nullptr), m_rx_user_data(nullptr), m_rx_byte(0) {}
 
 void Uart::start() {
     m_rx_queue = xQueueCreate(64, sizeof(std::uint8_t));
@@ -14,8 +14,9 @@ void Uart::start() {
     xTaskCreate(rx_task, "UartRx", configMINIMAL_STACK_SIZE, this, tskIDLE_PRIORITY + 1, nullptr);
 }
 
-void Uart::set_rx_callback(void (*callback)(std::uint8_t)) {
+void Uart::set_rx_callback(void (*callback)(std::uint8_t, void*), void* user_data) {
     m_rx_callback = callback;
+    m_rx_user_data = user_data;
 }
 
 bool Uart::send(const std::uint8_t* data, std::size_t length, TickType_t timeout) {
@@ -31,7 +32,7 @@ void Uart::rx_task(void* arg) {
     while (true) {
         if (xQueueReceive(uart->m_rx_queue, &byte, portMAX_DELAY) == pdPASS) {
             if (uart->m_rx_callback) {
-                uart->m_rx_callback(byte);
+                uart->m_rx_callback(byte, uart->m_rx_user_data);
             }
         }
     }
