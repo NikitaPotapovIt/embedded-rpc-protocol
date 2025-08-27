@@ -1,88 +1,67 @@
 #include "main.h"
 #include "FreeRTOS.h"
 #include "task.h"
-#include "queue.h"
 #include "../include/drivers/uart.hpp"
 #include "../include/protocol/parser.hpp"
 #include "../include/rpc/service.hpp"
 #include "../include/rpc/client.hpp"
 
-protocol::Parser* packet_parser = nullptr;
-rpc::Service& rpc_service = rpc::Service::instance();
-rpc::Client& rpc_client = rpc::Client::instance();
-QueueHandle_t uart_rx_queue;
-
-int32_t rpc_add(int32_t a, int32_t b) {
-    return a + b;
-}
-
-void rpc_set_led(bool state) {
-    HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, state ? GPIO_PIN_SET : GPIO_PIN_RESET);
-}
-
-float rpc_get_temperature() {
-    return 25.5f;
-}
-
-void uart_rx_callback(std::uint8_t byte) {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xQueueSendFromISR(uart_rx_queue, &byte, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-}
+int32_t rpc_add(int32_t a, int32_t b) { return a + b; }
+void rpc_set_led(bool state) { HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, state ? GPIO_PIN_SET : GPIO_PIN_RESET); }
+float rpc_get_temperature() { return 25.0f; }
 
 void packet_handler(const protocol::Packet& packet) {
-    rpc_service.process_packet(packet);
+    if (packet.valid) {
+        extern rpc::Client* global_client_instance;
+        if (global_client_instance && (packet.type == rpc::MessageType::Response || packet.type == rpc::MessageType::Error)) {
+            xQueueSend(global_client_instance->get_response_queue(), &packet, portMAX_DELAY);
+        }
+    }
 }
 
 void uart_receive_task(void* arg) {
-    std::uint8_t byte;
+    drivers::Uart* uart = static_cast<drivers::Uart*>(arg);
     while (true) {
-        if (xQueueReceive(uart_rx_queue, &byte, portMAX_DELAY) == pdPASS) {
-            if (packet_parser) {
-                packet_parser->process_byte(byte);
-            }
-        }
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
 void rpc_process_task(void* arg) {
+    rpc::Service* service = static_cast<rpc::Service*>(arg);
     while (true) {
-        // Demo client call (commented for build-only)
-        /*
-        try {
-            int32_t sum = rpc_client.call<int32_t, int32_t, int32_t>("add", 5, 3);
-            float temp = rpc_client.call<float>("get_temp");
-            rpc_client.stream_call<bool>("set_led", true);
-        } catch (const std::exception& e) {
-            const char* msg = "Client error\n";
-            drivers::Uart::instance().send(reinterpret_cast<const std::uint8_t*>(msg), std::strlen(msg));
-        }
-        */
-        vTaskDelay(pdMS_TO_TICKS(100));
+        service->process();
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
-int main(void) {
+rpc::Client* global_client_instance = nullptr;
+
+int main() {
     HAL_Init();
     SystemClock_Config();
     MX_GPIO_Init();
     MX_USART2_UART_Init();
 
-    auto& uart = drivers::Uart::instance();
-    uart.init();
-    uart.set_rx_callback(uart_rx_callback);
+    drivers::Uart uart(&huart2);
+    protocol::Parser parser(uart, packet_handler);
+    rpc::Service rpc_service(parser);
+    rpc::Client client(uart, parser);
+    global_client_instance = &client;
 
-    rpc_service.register_handler("add", rpc_add);
-    rpc_service.register_handler("set_led", rpc_set_led);
-    rpc_service.register_handler("get_temp", rpc_get_temperature);
+    rpc_service.register_handler("add", std::function<int32_t(int32_t, int32_t)>(rpc_add));
+    rpc_service.register_handler("set_led", std::function<void(bool)>(rpc_set_led));
+    rpc_service.register_handler("get_temp", std::function<float()>(rpc_get_temperature));
 
-    uart_rx_queue = xQueueCreate(64, sizeof(std::uint8_t));
-    packet_parser = new protocol::Parser(packet_handler);
+    uart.set_rx_callback([&parser](std::uint8_t byte) { parser.process_byte(byte); });
+    uart.start();
 
-    xTaskCreate(uart_receive_task, "UART_Rx", 256, nullptr, 4, nullptr);
-    xTaskCreate(rpc_process_task, "RPC_Proc", 256, nullptr, 3, nullptr);
+    xTaskCreate(uart_receive_task, "UART_Rx", 256, &uart, 4, nullptr);
+    xTaskCreate(rpc_process_task, "RPC_Proc", 256, &rpc_service, 3, nullptr);
 
     vTaskStartScheduler();
+    while (true) {}
+}
 
-    while (1) {}
+extern "C" void Error_Handler() {
+    while (true) {}
 }

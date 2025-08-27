@@ -1,73 +1,51 @@
 #include "../../include/rpc/service.hpp"
 #include "../../include/protocol/sender.hpp"
-#include "../../include/drivers/uart.hpp"
+#include "../../include/rpc/types.hpp"
 #include <cstring>
 
 namespace rpc {
 
-void Service::process_packet(const protocol::Packet& packet) {
-    if (!packet.valid || packet.length < 5) return;
-
-    Message request;
-    request.type = static_cast<MessageType>(packet.data[5]); // After header
-    request.sequence_number = packet.data[6];
-
-    size_t name_offset = 7;
-    request.function_name = reinterpret_cast<const char*>(&packet.data[name_offset]);
-    size_t name_length = std::strlen(request.function_name);
-    size_t args_offset = name_offset + name_length + 1;
-    request.arguments = &packet.data[args_offset];
-    request.arguments_length = packet.length - args_offset - 2; // Exclude footer CRC, stop byte
-
-    if (request.type == MessageType::Response || request.type == MessageType::Error) {
-        // Push to response queue
-        xQueueSend(Client::instance().m_response_queue, &request, portMAX_DELAY);
-        return;
-    }
-
-    auto it = m_handlers.find(std::string(request.function_name, name_length));
-    if (it == m_handlers.end()) {
-        Message response;
-        response.type = MessageType::Error;
-        response.sequence_number = request.sequence_number;
-        response.function_name = "";
-        const char* error_msg = "Function not found";
-        response.arguments = reinterpret_cast<const std::uint8_t*>(error_msg);
-        response.arguments_length = std::strlen(error_msg);
-        send_response(response);
-        return;
-    }
-
-    if (request.type == MessageType::Request) {
-        std::array<std::uint8_t, 64> result_buffer;
-        size_t result_length = 0;
-        it->second->invoke(request.arguments, request.arguments_length, result_buffer.data(), &result_length);
-
-        Message response;
-        response.type = MessageType::Response;
-        response.sequence_number = request.sequence_number;
-        response.function_name = "";
-        response.arguments = result_buffer.data();
-        response.arguments_length = result_length;
-        send_response(response);
-    } else if (request.type == MessageType::Stream) {
-        std::array<std::uint8_t, 64> result_buffer;
-        size_t result_length = 0;
-        it->second->invoke(request.arguments, request.arguments_length, result_buffer.data(), &result_length);
-    }
+Service::Service(protocol::Parser& parser) : m_parser(parser) {
+    m_parser.set_handler([this](const protocol::Packet& packet) { process_packet(packet); });
 }
 
-void Service::send_response(const Message& response) {
-    std::array<std::uint8_t, Packet::MaxSize> buffer;
-    std::size_t offset = 0;
+void Service::process_packet(const protocol::Packet& packet) {
+    if (!packet.valid || packet.func_name.empty()) {
+        return;
+    }
 
-    buffer[offset++] = static_cast<std::uint8_t>(response.type);
-    buffer[offset++] = response.sequence_number;
-    buffer[offset++] = 0; // Empty function name
-    std::memcpy(&buffer[offset], response.arguments, response.arguments_length);
-    offset += response.arguments_length;
+    auto it = m_handlers.find(packet.func_name);
+    if (it == m_handlers.end()) {
+        protocol::Packet error_packet;
+        error_packet.valid = true;
+        error_packet.seq = packet.seq;
+        error_packet.type = MessageType::Error;
+        error_packet.func_name = packet.func_name;
+        error_packet.data[0] = static_cast<std::uint8_t>(MessageType::Error);
+        error_packet.data_length = 1;
+        
+        protocol::Sender sender(m_parser.get_uart());
+        sender.send_transport(error_packet.data, error_packet.data_length, error_packet.seq, error_packet.type);
+        return;
+    }
 
-    protocol::Sender::instance().send_transport(buffer.data(), offset);
+    std::uint8_t response[protocol::Packet::MaxSize];
+    std::size_t response_length = 0;
+    it->second(packet.data + packet.func_name.size() + 2, packet.data_length - (packet.func_name.size() + 2), response, &response_length);
+
+    protocol::Packet response_packet;
+    response_packet.valid = true;
+    response_packet.seq = packet.seq;
+    response_packet.type = MessageType::Response;
+    response_packet.func_name = packet.func_name;
+    response_packet.data_length = response_length + packet.func_name.size() + 2;
+    response_packet.data[0] = static_cast<std::uint8_t>(MessageType::Response);
+    response_packet.data[1] = packet.seq;
+    std::memcpy(response_packet.data + 2, packet.func_name.c_str(), packet.func_name.size() + 1);
+    std::memcpy(response_packet.data + packet.func_name.size() + 2, response, response_length);
+
+    protocol::Sender sender(m_parser.get_uart());
+    sender.send_transport(response_packet.data, response_packet.data_length, response_packet.seq, response_packet.type);
 }
 
 } // namespace rpc

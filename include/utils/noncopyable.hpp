@@ -2,16 +2,13 @@
 
 namespace utils {
 
-    class NonCopyable {
+class NonCopyable {
+protected:
+    NonCopyable() = default;
+    ~NonCopyable() = default;
 
-    protected:
-        NonCopyable() = default;
-        ~NonCopyable() = default;
-    
-    NonCopyable(const NonCopyable&) = delete; // Удаляем конструктор копирования
+    NonCopyable(const NonCopyable&) = delete;
+    NonCopyable& operator=(const NonCopyable&) = delete;
+};
 
-    NonCopyable& operator=(const NonCopyable) = delete; // Удаляем оператор присваивания
-    
-    };
-    
 } // namespace utils

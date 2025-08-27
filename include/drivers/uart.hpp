@@ -1,24 +1,26 @@
 #pragma once
+#include <cstdint>
+#include "stm32f4xx_hal.h"
+#include "FreeRTOS.h"
+#include "queue.h"
 #include "../utils/noncopyable.hpp"
-#include "../utils/allocator.hpp"
 
 namespace drivers {
 
-    class Uart : private utils::NonCopyable {
-        public:
-        static Uart& instance() {
-            static Uart instance;
-            return instance;
-        }
+class Uart : private utils::NonCopyable {
+public:
+    explicit Uart(UART_HandleTypeDef* huart);
+    void start();
+    void set_rx_callback(void (*callback)(std::uint8_t));
+    bool send(const std::uint8_t* data, std::size_t length, TickType_t timeout);
 
-        bool init();
-        bool send(const std::uint8_t* data, std::size_t size);
-        void set_rx_callback(void (*callback)(std::uint8_t));
+private:
+    friend void HAL_UART_RxCpltCallback(UART_HandleTypeDef*);
+    static void rx_task(void* arg);
+    UART_HandleTypeDef* m_huart;
+    QueueHandle_t m_rx_queue;
+    void (*m_rx_callback)(std::uint8_t);
+    std::uint8_t m_rx_byte;
+};
 
-        private:
-        Uart() = default;
-        void (*m_rx_callback)(std::uint8_t){nullptr};
-
-        friend void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart);
-    };
-} // namespase drivers
+} // namespace drivers
