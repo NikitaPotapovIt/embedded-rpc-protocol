@@ -48,3 +48,4 @@ if (NOT TARGET _FreeRTOS_kernel_inclusion_marker)
         endif()
     endif()
 endif()
+

@@ -21,12 +21,12 @@ public:
     }
 
 private:
-    template<typename Result, typename Tuple>
+    template<typename Result, typename... Args>
     struct Handler {
-        std::function<Result(Tuple)> func;
+        std::function<Result(Args...)> func;
 
         void invoke(const std::uint8_t* args, std::size_t args_length, std::uint8_t* res, std::size_t* res_length) {
-            auto args_tuple = Serializer::deserialize_tuple<typename Tuple::types...>(args + args_length - sizeof(Tuple));
+            auto args_tuple = Serializer::deserialize_tuple<Args...>(args);
             auto result = std::apply(func, args_tuple);
             Serializer::serialize(result, res);
             *res_length = sizeof(result);

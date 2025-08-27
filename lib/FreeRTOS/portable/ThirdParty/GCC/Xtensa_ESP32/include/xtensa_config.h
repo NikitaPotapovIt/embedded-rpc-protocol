@@ -5,7 +5,6 @@
  *
  * SPDX-FileContributor: 2016-2022 Espressif Systems (Shanghai) CO LTD
  */
-
 /*
  * Copyright (c) 2015-2019 Cadence Design Systems, Inc.
  *
@@ -41,19 +40,17 @@
 *******************************************************************************/
 
 #ifndef XTENSA_CONFIG_H
-#define XTENSA_CONFIG_H
+    #define XTENSA_CONFIG_H
 
-/* *INDENT-OFF* */
-#ifdef __cplusplus
-    extern "C" {
-#endif
-/* *INDENT-ON* */
+    #ifdef __cplusplus
+        extern "C" {
+    #endif
 
-#include <xtensa/hal.h>
-#include <xtensa/config/core.h>
-#include <xtensa/config/system.h> /* required for XSHAL_CLIB */
+    #include <xtensa/hal.h>
+    #include <xtensa/config/core.h>
+    #include <xtensa/config/system.h> /* required for XSHAL_CLIB */
 
-#include "xtensa_context.h"
+    #include "xtensa_context.h"
 
 
 /*-----------------------------------------------------------------------------
@@ -106,27 +103,27 @@
  *  -----------------------------------------------------------------------------*/
 
 /* Extra space required for interrupt/exception hooks. */
-#ifdef XT_INTEXC_HOOKS
-    #ifdef __XTENSA_CALL0_ABI__
-        #define STK_INTEXC_EXTRA     0x200
+    #ifdef XT_INTEXC_HOOKS
+        #ifdef __XTENSA_CALL0_ABI__
+            #define STK_INTEXC_EXTRA     0x200
+        #else
+            #define STK_INTEXC_EXTRA     0x180
+        #endif
     #else
-        #define STK_INTEXC_EXTRA     0x180
+        #define STK_INTEXC_EXTRA         0
     #endif
-#else
-    #define STK_INTEXC_EXTRA         0
-#endif
 
-#define XT_CLIB_CONTEXT_AREA_SIZE    0
+    #define XT_CLIB_CONTEXT_AREA_SIZE    0
 
 /*------------------------------------------------------------------------------
  *  Extra size -- interrupt frame plus coprocessor save area plus hook space.
  *  NOTE: Make sure XT_INTEXC_HOOKS is undefined unless you really need the hooks.
  *  ------------------------------------------------------------------------------*/
-#ifdef __XTENSA_CALL0_ABI__
-    #define XT_XTRA_SIZE    ( XT_STK_FRMSZ + STK_INTEXC_EXTRA + 0x10 + XT_CP_SIZE )
-#else
-    #define XT_XTRA_SIZE    ( XT_STK_FRMSZ + STK_INTEXC_EXTRA + 0x20 + XT_CP_SIZE )
-#endif
+    #ifdef __XTENSA_CALL0_ABI__
+        #define XT_XTRA_SIZE    ( XT_STK_FRMSZ + STK_INTEXC_EXTRA + 0x10 + XT_CP_SIZE )
+    #else
+        #define XT_XTRA_SIZE    ( XT_STK_FRMSZ + STK_INTEXC_EXTRA + 0x20 + XT_CP_SIZE )
+    #endif
 
 /*------------------------------------------------------------------------------
  *  Space allocated for user code -- function calls and local variables.
@@ -136,23 +133,22 @@
  *  NOTE: The windowed ABI requires more stack, since space has to be reserved
  *  for spilling register windows.
  *  ------------------------------------------------------------------------------*/
-#ifdef __XTENSA_CALL0_ABI__
-    #define XT_USER_SIZE    0x200
-#else
-    #define XT_USER_SIZE    0x400
-#endif
+    #ifdef __XTENSA_CALL0_ABI__
+        #define XT_USER_SIZE    0x200
+    #else
+        #define XT_USER_SIZE    0x400
+    #endif
 
 /* Minimum recommended stack size. */
-#define XT_STACK_MIN_SIZE      ( ( XT_XTRA_SIZE + XT_USER_SIZE ) / sizeof( unsigned char ) )
+    #define XT_STACK_MIN_SIZE      ( ( XT_XTRA_SIZE + XT_USER_SIZE ) / sizeof( unsigned char ) )
 
 /* OS overhead with and without C library thread context. */
-#define XT_STACK_EXTRA         ( XT_XTRA_SIZE )
-#define XT_STACK_EXTRA_CLIB    ( XT_XTRA_SIZE + XT_CLIB_CONTEXT_AREA_SIZE )
+    #define XT_STACK_EXTRA         ( XT_XTRA_SIZE )
+    #define XT_STACK_EXTRA_CLIB    ( XT_XTRA_SIZE + XT_CLIB_CONTEXT_AREA_SIZE )
 
-/* *INDENT-OFF* */
-#ifdef __cplusplus
-    }
-#endif
-/* *INDENT-ON* */
+
+    #ifdef __cplusplus
+        }
+    #endif
 
 #endif /* XTENSA_CONFIG_H */

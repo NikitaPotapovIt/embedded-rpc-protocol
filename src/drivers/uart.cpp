@@ -4,11 +4,9 @@
 
 namespace drivers {
 
-Uart* global_uart_instance = nullptr;
+Uart* Uart::global_uart_instance = nullptr;
 
-Uart::Uart(UART_HandleTypeDef* huart) : m_huart(huart), m_rx_queue(nullptr), m_rx_callback(nullptr), m_rx_byte(0) {
-    global_uart_instance = this;
-}
+Uart::Uart(UART_HandleTypeDef* huart) : m_huart(huart), m_rx_queue(nullptr), m_rx_callback(nullptr), m_rx_byte(0) {}
 
 void Uart::start() {
     m_rx_queue = xQueueCreate(64, sizeof(std::uint8_t));
@@ -43,10 +41,10 @@ void Uart::rx_task(void* arg) {
 
 extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef* huart) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    drivers::Uart* uart = drivers::Uart::global_uart_instance;
-    if (uart && uart->m_huart == huart) {
-        xQueueSendFromISR(uart->m_rx_queue, &uart->m_rx_byte, &xHigherPriorityTaskWoken);
-        HAL_UART_Receive_IT(huart, &uart->m_rx_byte, 1);
+    drivers::Uart* uart = drivers::Uart::get_global_instance();
+    if (uart && uart->get_huart() == huart) {
+        xQueueSendFromISR(uart->get_rx_queue(), &uart->get_rx_byte(), &xHigherPriorityTaskWoken);
+        HAL_UART_Receive_IT(huart, &uart->get_rx_byte(), 1);
     }
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }

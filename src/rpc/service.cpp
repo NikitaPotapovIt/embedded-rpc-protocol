@@ -1,7 +1,8 @@
 #include "../../include/rpc/service.hpp"
 #include "../../include/protocol/sender.hpp"
-#include "../../include/rpc/types.hpp"
 #include <cstring>
+#include "FreeRTOS.h"
+#include "queue.h"
 
 namespace rpc {
 

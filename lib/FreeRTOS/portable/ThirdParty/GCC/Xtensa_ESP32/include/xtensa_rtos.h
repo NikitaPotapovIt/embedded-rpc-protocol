@@ -5,7 +5,6 @@
  *
  * SPDX-FileContributor: 2016-2022 Espressif Systems (Shanghai) CO LTD
  */
-
 /*
  * Copyright (c) 2015-2019 Cadence Design Systems, Inc.
  *
@@ -61,7 +60,6 @@
 #include    <xtensa/corebits.h>
 #include    <xtensa/config/system.h>
 #include    "sdkconfig.h"
-
 /*
  * Include any RTOS specific definitions that are needed by this header.
  */
@@ -157,9 +155,9 @@
  */
 /* void XT_RTOS_TIMER_INT(void) */
 #ifdef CONFIG_FREERTOS_SYSTICK_USES_CCOUNT
-    #define XT_RTOS_TIMER_INT    _frxt_timer_int
+#define XT_RTOS_TIMER_INT   _frxt_timer_int
 #endif
-#define XT_TICK_PER_SEC          configTICK_RATE_HZ
+#define XT_TICK_PER_SEC      configTICK_RATE_HZ
 
 /*
  * Return in a15 the base address of the co-processor state save area for the

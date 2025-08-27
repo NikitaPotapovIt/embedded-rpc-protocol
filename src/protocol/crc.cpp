@@ -3,7 +3,7 @@
 namespace protocol {
 
 bool Crc::validate(const Packet& packet) {
-    std::uint8_t header[4] = {0xFA, packet.length & 0xFF, packet.length >> 8, 0xFB};
+    std::uint8_t header[4] = {0xFA, static_cast<std::uint8_t>(packet.length & 0xFF), static_cast<std::uint8_t>(packet.length >> 8), 0xFB};
     std::uint8_t header_crc = calculate(header, 3);
     if (header_crc != packet.header_crc) {
         return false;

@@ -3,6 +3,7 @@
 #include "packet.hpp"
 #include "../drivers/uart.hpp"
 #include "../utils/noncopyable.hpp"
+#include "../rpc/types.hpp"
 
 namespace protocol {
 

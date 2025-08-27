@@ -1,6 +1,6 @@
 /*
- * FreeRTOS Kernel V11.1.0
- * Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * FreeRTOS Kernel V10.5.1
+ * Copyright (C) 2021 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -30,11 +30,9 @@
 #ifndef PORTMACRO_H
     #define PORTMACRO_H
 
-/* *INDENT-OFF* */
-#ifdef __cplusplus
-    extern "C" {
-#endif
-/* *INDENT-ON* */
+    #ifdef __cplusplus
+        extern "C" {
+    #endif
 
 /*-----------------------------------------------------------
  * Port specific definitions.
@@ -60,18 +58,16 @@
     typedef unsigned long    UBaseType_t;
 
 
-    #if ( configTICK_TYPE_WIDTH_IN_BITS == TICK_TYPE_WIDTH_16_BITS )
+    #if ( configUSE_16_BIT_TICKS == 1 )
         typedef uint16_t     TickType_t;
         #define portMAX_DELAY              ( TickType_t ) 0xffff
-    #elif ( configTICK_TYPE_WIDTH_IN_BITS == TICK_TYPE_WIDTH_32_BITS )
+    #else
         typedef uint32_t     TickType_t;
         #define portMAX_DELAY              ( TickType_t ) 0xffffffffUL
 
 /* 32-bit tick type on a 32-bit architecture, so reads of the tick count do
  * not need to be guarded with a critical section. */
         #define portTICK_TYPE_IS_ATOMIC    1
-    #else
-        #error configTICK_TYPE_WIDTH_IN_BITS set to unsupported tick type width.
     #endif
 /*-----------------------------------------------------------*/
 
@@ -83,25 +79,13 @@
 
 
 /* Scheduler utilities. */
-extern void vPortYield( void );
-#define portNVIC_INT_CTRL     ( ( volatile uint32_t * ) 0xe000ed04 )
-#define portNVIC_PENDSVSET    0x10000000
-#define portYIELD()                vPortYield()
+    extern void vPortYield( void );
+    #define portNVIC_INT_CTRL     ( ( volatile uint32_t * ) 0xe000ed04 )
+    #define portNVIC_PENDSVSET    0x10000000
+    #define portYIELD()                                 vPortYield()
 
-#define portEND_SWITCHING_ISR( xSwitchRequired )         \
-    do                                                   \
-    {                                                    \
-        if( xSwitchRequired != pdFALSE )                 \
-        {                                                \
-            traceISR_EXIT_TO_SCHEDULER();                \
-            *( portNVIC_INT_CTRL ) = portNVIC_PENDSVSET; \
-        }                                                \
-        else                                             \
-        {                                                \
-            traceISR_EXIT();                             \
-        }                                                \
-    } while( 0 )
-#define portYIELD_FROM_ISR( x )    portEND_SWITCHING_ISR( x )
+    #define portEND_SWITCHING_ISR( xSwitchRequired )    if( xSwitchRequired ) *( portNVIC_INT_CTRL ) = portNVIC_PENDSVSET
+    #define portYIELD_FROM_ISR( x )                     portEND_SWITCHING_ISR( x )
 /*-----------------------------------------------------------*/
 
 
@@ -142,10 +126,8 @@ extern void vPortYield( void );
 
     #define portNOP()
 
-/* *INDENT-OFF* */
-#ifdef __cplusplus
-    }
-#endif
-/* *INDENT-ON* */
+    #ifdef __cplusplus
+        }
+    #endif
 
 #endif /* PORTMACRO_H */

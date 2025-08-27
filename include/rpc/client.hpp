@@ -6,7 +6,7 @@
 #include "../protocol/packet.hpp"
 #include "../protocol/parser.hpp"
 #include "../drivers/uart.hpp"
-#include "types.hpp"
+#include "../rpc/types.hpp"
 
 namespace rpc {
 

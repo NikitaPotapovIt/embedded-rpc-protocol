@@ -1,6 +1,6 @@
 /*
- * FreeRTOS Kernel V11.1.0
- * Copyright (C) 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * FreeRTOS Kernel V10.5.1
+ * Copyright (C) 2021 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
  *
  * SPDX-License-Identifier: MIT
  *
@@ -56,9 +56,8 @@
 #define portNVIC_PEND_SYSTICK_SET_BIT         ( 1UL << 26UL )
 #define portNVIC_PEND_SYSTICK_CLEAR_BIT       ( 1UL << 25UL )
 
-#define portMIN_INTERRUPT_PRIORITY            ( 255UL )
-#define portNVIC_PENDSV_PRI                   ( ( ( uint32_t ) portMIN_INTERRUPT_PRIORITY ) << 16UL )
-#define portNVIC_SYSTICK_PRI                  ( ( ( uint32_t ) portMIN_INTERRUPT_PRIORITY ) << 24UL )
+#define portNVIC_PENDSV_PRI                   ( ( ( uint32_t ) configKERNEL_INTERRUPT_PRIORITY ) << 16UL )
+#define portNVIC_SYSTICK_PRI                  ( ( ( uint32_t ) configKERNEL_INTERRUPT_PRIORITY ) << 24UL )
 
 /* Constants required to check the validity of an interrupt priority. */
 #define portFIRST_USER_INTERRUPT_NUMBER       ( 16 )
@@ -237,8 +236,7 @@ BaseType_t xPortStartScheduler( void )
 {
     #if ( configASSERT_DEFINED == 1 )
     {
-        volatile uint8_t ucOriginalPriority;
-        volatile uint32_t ulImplementedPrioBits = 0;
+        volatile uint32_t ulOriginalPriority;
         volatile uint8_t * const pucFirstUserPriorityRegister = ( uint8_t * ) ( portNVIC_IP_REGISTERS_OFFSET_16 + portFIRST_USER_INTERRUPT_NUMBER );
         volatile uint8_t ucMaxPriorityValue;
 
@@ -248,7 +246,7 @@ BaseType_t xPortStartScheduler( void )
          * ensure interrupt entry is as fast and simple as possible.
          *
          * Save the interrupt priority value that is about to be clobbered. */
-        ucOriginalPriority = *pucFirstUserPriorityRegister;
+        ulOriginalPriority = *pucFirstUserPriorityRegister;
 
         /* Determine the number of priority bits available.  First write to all
          * possible bits. */
@@ -260,53 +258,33 @@ BaseType_t xPortStartScheduler( void )
         /* Use the same mask on the maximum system call priority. */
         ucMaxSysCallPriority = configMAX_SYSCALL_INTERRUPT_PRIORITY & ucMaxPriorityValue;
 
-        /* Check that the maximum system call priority is nonzero after
-         * accounting for the number of priority bits supported by the
-         * hardware. A priority of 0 is invalid because setting the BASEPRI
-         * register to 0 unmasks all interrupts, and interrupts with priority 0
-         * cannot be masked using BASEPRI.
-         * See https://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html */
-        configASSERT( ucMaxSysCallPriority );
-
-        /* Check that the bits not implemented in hardware are zero in
-         * configMAX_SYSCALL_INTERRUPT_PRIORITY. */
-        configASSERT( ( configMAX_SYSCALL_INTERRUPT_PRIORITY & ( ~ucMaxPriorityValue ) ) == 0U );
-
         /* Calculate the maximum acceptable priority group value for the number
          * of bits read back. */
+        ulMaxPRIGROUPValue = portMAX_PRIGROUP_BITS;
 
         while( ( ucMaxPriorityValue & portTOP_BIT_OF_BYTE ) == portTOP_BIT_OF_BYTE )
         {
-            ulImplementedPrioBits++;
+            ulMaxPRIGROUPValue--;
             ucMaxPriorityValue <<= ( uint8_t ) 0x01;
         }
 
-        if( ulImplementedPrioBits == 8 )
+        #ifdef __NVIC_PRIO_BITS
         {
-            /* When the hardware implements 8 priority bits, there is no way for
-            * the software to configure PRIGROUP to not have sub-priorities. As
-            * a result, the least significant bit is always used for sub-priority
-            * and there are 128 preemption priorities and 2 sub-priorities.
-            *
-            * This may cause some confusion in some cases - for example, if
-            * configMAX_SYSCALL_INTERRUPT_PRIORITY is set to 5, both 5 and 4
-            * priority interrupts will be masked in Critical Sections as those
-            * are at the same preemption priority. This may appear confusing as
-            * 4 is higher (numerically lower) priority than
-            * configMAX_SYSCALL_INTERRUPT_PRIORITY and therefore, should not
-            * have been masked. Instead, if we set configMAX_SYSCALL_INTERRUPT_PRIORITY
-            * to 4, this confusion does not happen and the behaviour remains the same.
-            *
-            * The following assert ensures that the sub-priority bit in the
-            * configMAX_SYSCALL_INTERRUPT_PRIORITY is clear to avoid the above mentioned
-            * confusion. */
-            configASSERT( ( configMAX_SYSCALL_INTERRUPT_PRIORITY & 0x1U ) == 0U );
-            ulMaxPRIGROUPValue = 0;
+            /* Check the CMSIS configuration that defines the number of
+             * priority bits matches the number of priority bits actually queried
+             * from the hardware. */
+            configASSERT( ( portMAX_PRIGROUP_BITS - ulMaxPRIGROUPValue ) == __NVIC_PRIO_BITS );
         }
-        else
+        #endif
+
+        #ifdef configPRIO_BITS
         {
-            ulMaxPRIGROUPValue = portMAX_PRIGROUP_BITS - ulImplementedPrioBits;
+            /* Check the FreeRTOS configuration that defines the number of
+             * priority bits matches the number of priority bits actually queried
+             * from the hardware. */
+            configASSERT( ( portMAX_PRIGROUP_BITS - ulMaxPRIGROUPValue ) == configPRIO_BITS );
         }
+        #endif
 
         /* Shift the priority group value back to its position within the AIRCR
          * register. */
@@ -315,7 +293,7 @@ BaseType_t xPortStartScheduler( void )
 
         /* Restore the clobbered interrupt priority register to its original
          * value. */
-        *pucFirstUserPriorityRegister = ucOriginalPriority;
+        *pucFirstUserPriorityRegister = ulOriginalPriority;
     }
     #endif /* configASSERT_DEFINED */
 
@@ -388,20 +366,13 @@ void xPortSysTickHandler( void )
      * save and then restore the interrupt mask value as its value is already
      * known. */
     ( void ) portSET_INTERRUPT_MASK_FROM_ISR();
-    traceISR_ENTER();
     {
         /* Increment the RTOS tick. */
         if( xTaskIncrementTick() != pdFALSE )
         {
-            traceISR_EXIT_TO_SCHEDULER();
-
             /* A context switch is required.  Context switching is performed in
              * the PendSV interrupt.  Pend the PendSV interrupt. */
             portNVIC_INT_CTRL_REG = portNVIC_PENDSVSET_BIT;
-        }
-        else
-        {
-            traceISR_EXIT();
         }
     }
     portCLEAR_INTERRUPT_MASK_FROM_ISR( 0 );
@@ -424,9 +395,9 @@ void xPortSysTickHandler( void )
 
         /* Enter a critical section but don't use the taskENTER_CRITICAL()
          * method as that will mask interrupts that should exit sleep mode. */
-        __asm( "    cpsid i" );
-        __asm( "    dsb" );
-        __asm( "    isb" );
+        __asm( "	cpsid i");
+        __asm( "	dsb");
+        __asm( "	isb");
 
         /* If a context switch is pending or a task is waiting for the scheduler
          * to be unsuspended then abandon the low power entry. */
@@ -434,7 +405,7 @@ void xPortSysTickHandler( void )
         {
             /* Re-enable interrupts - see comments above the cpsid instruction
              * above. */
-            __asm( "    cpsie i" );
+            __asm( "	cpsie i");
         }
         else
         {
@@ -495,9 +466,9 @@ void xPortSysTickHandler( void )
 
             if( xModifiableIdleTime > 0 )
             {
-                __asm( "    dsb" );
-                __asm( "    wfi" );
-                __asm( "    isb" );
+                __asm( "	dsb");
+                __asm( "	wfi");
+                __asm( "	isb");
             }
 
             configPOST_SLEEP_PROCESSING( xExpectedIdleTime );
@@ -505,17 +476,17 @@ void xPortSysTickHandler( void )
             /* Re-enable interrupts to allow the interrupt that brought the MCU
              * out of sleep mode to execute immediately.  See comments above
              * the cpsid instruction above. */
-            __asm( "    cpsie i" );
-            __asm( "    dsb" );
-            __asm( "    isb" );
+            __asm( "	cpsie i");
+            __asm( "	dsb");
+            __asm( "	isb");
 
             /* Disable interrupts again because the clock is about to be stopped
              * and interrupts that execute while the clock is stopped will increase
              * any slippage between the time maintained by the RTOS and calendar
              * time. */
-            __asm( "    cpsid i" );
-            __asm( "    dsb" );
-            __asm( "    isb" );
+            __asm( "	cpsid i");
+            __asm( "	dsb");
+            __asm( "	isb");
 
             /* Disable the SysTick clock without reading the
              * portNVIC_SYSTICK_CTRL_REG register to ensure the
@@ -623,7 +594,7 @@ void xPortSysTickHandler( void )
             vTaskStepTick( ulCompleteTickPeriods );
 
             /* Exit with interrupts enabled. */
-            __asm( "    cpsie i" );
+            __asm( "	cpsie i");
         }
     }
 
@@ -684,10 +655,10 @@ void vPortSetupTimerInterrupt( void )
              * be set to a value equal to or numerically *higher* than
              * configMAX_SYSCALL_INTERRUPT_PRIORITY.
              *
-             * Interrupts that  use the FreeRTOS API must not be left at their
-             * default priority of  zero as that is the highest possible priority,
+             * Interrupts that	use the FreeRTOS API must not be left at their
+             * default priority of	zero as that is the highest possible priority,
              * which is guaranteed to be above configMAX_SYSCALL_INTERRUPT_PRIORITY,
-             * and  therefore also guaranteed to be invalid.
+             * and	therefore also guaranteed to be invalid.
              *
              * FreeRTOS maintains separate thread and ISR API functions to ensure
              * interrupt entry is as fast and simple as possible.

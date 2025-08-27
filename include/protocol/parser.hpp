@@ -3,7 +3,7 @@
 #include "packet.hpp"
 #include "../utils/noncopyable.hpp"
 #include "../drivers/uart.hpp"
-#include "types.hpp"
+#include "../rpc/types.hpp"  // Правильный путь
 
 namespace protocol {
 
