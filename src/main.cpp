@@ -12,9 +12,16 @@ void SystemClock_Config(void);
 void MX_GPIO_Init(void);
 void MX_USART2_UART_Init(void);
 
+// Функции для RPC
 int32_t add(int32_t a, int32_t b) { return a + b; }
 float get_temperature() { return 25.5f; }
 void set_led(bool state) { HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, state ? GPIO_PIN_SET : GPIO_PIN_RESET); }
+
+// Обработчик пакетов для Parser
+void packet_handler(const protocol::Packet& packet, void* user_data) {
+    auto* service = static_cast<rpc::Service*>(user_data);
+    service->handle_packet(packet);
+}
 
 extern "C" int main(void) {
     HAL_Init();
@@ -23,18 +30,19 @@ extern "C" int main(void) {
     MX_USART2_UART_Init();
 
     drivers::Uart uart(&huart2);
-    protocol::Parser parser;
-    rpc::Client client(uart, parser);
-    rpc::Service service(uart, parser);
+    protocol::Parser parser(uart, packet_handler, nullptr); // Передаём UART, handler и user_data
+    rpc::Client client(uart, parser); // Корректная инициализация Client
+    rpc::Service service(parser);     // Корректная инициализация Service
 
-    service.register_method("add", add);
-    service.register_method("get_temperature", get_temperature);
-    service.register_method("set_led", set_led);
+    // Регистрация обработчиков с правильными типами
+    service.register_handler("add", &add);
+    service.register_handler("get_temperature", &get_temperature);
+    service.register_handler("set_led", &set_led);
 
     xTaskCreate([](void* param) {
         auto* s = static_cast<rpc::Service*>(param);
         while (true) {
-            s->handle();
+            s->process(); // Используем process() из Service
             vTaskDelay(1);
         }
     }, "Service", 256, &service, 1, nullptr);
