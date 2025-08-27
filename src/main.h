@@ -5,11 +5,9 @@
 
 extern UART_HandleTypeDef huart2;
 
+void Error_Handler(void);
 void SystemClock_Config(void);
 void MX_GPIO_Init(void);
 void MX_USART2_UART_Init(void);
-
-#define LD2_GPIO_Port GPIOA
-#define LD2_Pin GPIO_PIN_5
 
 #endif /* __MAIN_H */

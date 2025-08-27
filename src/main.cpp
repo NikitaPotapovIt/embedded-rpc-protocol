@@ -1,76 +1,106 @@
 #include "main.h"
-#include "FreeRTOS.h"
-#include "task.h"
-#include "../include/drivers/uart.hpp"
-#include "../include/protocol/parser.hpp"
-#include "../include/rpc/service.hpp"
-#include "../include/rpc/client.hpp"
+#include "rpc/client.hpp"
+#include "rpc/service.hpp"
+#include "drivers/uart.hpp"
+#include "protocol/parser.hpp"
+#include "protocol/sender.hpp"
+#include <string>
 
-drivers::Uart* global_uart_instance = nullptr;
-protocol::Parser* global_parser_instance = nullptr;
-rpc::Client* global_client_instance = nullptr;
+UART_HandleTypeDef huart2;
 
-int32_t rpc_add(int32_t a, int32_t b) { return a + b; }
-void rpc_set_led(bool state) { HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, state ? GPIO_PIN_SET : GPIO_PIN_RESET); }
-float rpc_get_temperature() { return 25.0f; }
+void SystemClock_Config(void);
+void MX_GPIO_Init(void);
+void MX_USART2_UART_Init(void);
 
-void packet_handler(const protocol::Packet& packet, void* arg) {
-    if (packet.valid) {
-        if (global_client_instance && (packet.type == rpc::MessageType::Response || packet.type == rpc::MessageType::Error)) {
-            xQueueSend(global_client_instance->get_response_queue(), &packet, portMAX_DELAY);
-        }
-    }
-}
+int32_t add(int32_t a, int32_t b) { return a + b; }
+float get_temperature() { return 25.5f; }
+void set_led(bool state) { HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, state ? GPIO_PIN_SET : GPIO_PIN_RESET); }
 
-void uart_receive_task(void* arg) {
-    drivers::Uart* uart = static_cast<drivers::Uart*>(arg);
-    (void)uart; // Избежать предупреждения о неиспользуемой переменной
-    while (true) {
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-}
-
-void rpc_process_task(void* arg) {
-    rpc::Service* service = static_cast<rpc::Service*>(arg);
-    while (true) {
-        service->process();
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-}
-
-void rx_callback(std::uint8_t byte, void* arg) {
-    auto* parser = static_cast<protocol::Parser*>(arg);
-    parser->process_byte(byte);
-}
-
-int main() {
+extern "C" int main(void) {
     HAL_Init();
     SystemClock_Config();
     MX_GPIO_Init();
     MX_USART2_UART_Init();
 
     drivers::Uart uart(&huart2);
-    global_uart_instance = &uart;
-    protocol::Parser parser(uart, packet_handler, &parser);
-    global_parser_instance = &parser;
-    rpc::Service rpc_service(parser);
+    protocol::Parser parser;
     rpc::Client client(uart, parser);
-    global_client_instance = &client;
+    rpc::Service service(uart, parser);
 
-    rpc_service.register_handler<int32_t, int32_t, int32_t>("add", rpc_add);
-    rpc_service.register_handler<void, bool>("set_led", rpc_set_led);
-    rpc_service.register_handler<float>("get_temp", rpc_get_temperature);
+    service.register_method("add", add);
+    service.register_method("get_temperature", get_temperature);
+    service.register_method("set_led", set_led);
 
-    uart.set_rx_callback(rx_callback, &parser);
-    uart.start();
-
-    xTaskCreate(uart_receive_task, "UART_Rx", 256, &uart, 4, nullptr);
-    xTaskCreate(rpc_process_task, "RPC_Proc", 256, &rpc_service, 3, nullptr);
+    xTaskCreate([](void* param) {
+        auto* s = static_cast<rpc::Service*>(param);
+        while (true) {
+            s->handle();
+            vTaskDelay(1);
+        }
+    }, "Service", 256, &service, 1, nullptr);
 
     vTaskStartScheduler();
-    while (true) {}
+    while (1) {}
 }
 
-extern "C" void Error_Handler() {
-    while (true) {}
+void SystemClock_Config(void) {
+    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+    __HAL_RCC_PWR_CLK_ENABLE();
+    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+    RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+    RCC_OscInitStruct.PLL.PLLM = 8;
+    RCC_OscInitStruct.PLL.PLLN = 200;
+    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+    RCC_OscInitStruct.PLL.PLLQ = 7;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+        Error_Handler();
+    }
+
+    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+                                | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK) {
+        Error_Handler();
+    }
+}
+
+void MX_USART2_UART_Init(void) {
+    huart2.Instance = USART2;
+    huart2.Init.BaudRate = 115200;
+    huart2.Init.WordLength = UART_WORDLENGTH_8B;
+    huart2.Init.StopBits = UART_STOPBITS_1;
+    huart2.Init.Parity = UART_PARITY_NONE;
+    huart2.Init.Mode = UART_MODE_TX_RX;
+    huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+    if (HAL_UART_Init(&huart2) != HAL_OK) {
+        Error_Handler();
+    }
+}
+
+void MX_GPIO_Init(void) {
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+
+    GPIO_InitStruct.Pin = GPIO_PIN_5;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+}
+
+void Error_Handler(void) {
+    __disable_irq();
+    while (1) {}
 }

@@ -1,3 +1,4 @@
+// lib/FreeRTOS/FreeRTOSConfig.h
 #ifndef FREERTOS_CONFIG_H
 #define FREERTOS_CONFIG_H
 
@@ -23,52 +24,28 @@
 #define configUSE_APPLICATION_TASK_TAG          0
 #define configUSE_COUNTING_SEMAPHORES           1
 #define configGENERATE_RUN_TIME_STATS           0
+#define configUSE_TASK_FPU_SUPPORT              1
 
-#define configMAX_SYSCALL_INTERRUPT_PRIORITY    191 /* equivalent to 0xb0, or priority 11. */
-#define configKERNEL_INTERRUPT_PRIORITY         255 /* equivalent to 0xf0, or priority 15. */
-
-#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY 5
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY    191 /* Priority 11 */
+#define configKERNEL_INTERRUPT_PRIORITY         255 /* Priority 15 */
 
 #define configUSE_QUEUE_SETS                    0
 #define configUSE_NEWLIB_REENTRANT              0
 #define configENABLE_BACKWARD_COMPATIBILITY     0
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 5
-
 #define configUSE_TICKLESS_IDLE                 0
-
-/* Memory allocation related definitions. */
 #define configSUPPORT_STATIC_ALLOCATION         0
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
 #define configAPPLICATION_ALLOCATED_HEAP        0
 #define configSTACK_ALLOCATION_FROM_SEPARATE_HEAP 0
 
-/* Hook function related definitions. */
-#define configUSE_MALLOC_FAILED_HOOK            0
-#define configUSE_DAEMON_TASK_STARTUP_HOOK      0
-
-/* Run time and task stats gathering related definitions. */
-#define configGENERATE_RUN_TIME_STATS           0
-#define configUSE_TRACE_FACILITY                0
-#define configUSE_STATS_FORMATTING_FUNCTIONS    0
-
-/* Co-routine related definitions. */
-#define configUSE_CO_ROUTINES                   0
-#define configMAX_CO_ROUTINE_PRIORITIES         2
-
-/* Software timer related definitions. */
 #define configUSE_TIMERS                        1
 #define configTIMER_TASK_PRIORITY               (configMAX_PRIORITIES - 1)
 #define configTIMER_QUEUE_LENGTH                10
 #define configTIMER_TASK_STACK_DEPTH            configMINIMAL_STACK_SIZE
 
-/* Interrupt nesting behaviour configuration. */
-#define configLIBRARY_LOWEST_INTERRUPT_PRIORITY 15
-#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY 5
-
-/* Define to trap errors during development. */
 #define configASSERT(x) if ((x) == 0) { taskDISABLE_INTERRUPTS(); for( ;; ); }
 
-/* Optional functions - most linkers will remove unused functions anyway. */
 #define INCLUDE_vTaskPrioritySet                1
 #define INCLUDE_uxTaskPriorityGet               1
 #define INCLUDE_vTaskDelete                     1
@@ -86,7 +63,6 @@
 #define INCLUDE_xTaskGetHandle                  0
 #define INCLUDE_xTaskResumeFromISR              1
 
-/* Definitions that map the FreeRTOS port interrupt handlers to their CMSIS standard names. */
 #define vPortSVCHandler    SVC_Handler
 #define xPortPendSVHandler PendSV_Handler
 #define xPortSysTickHandler SysTick_Handler

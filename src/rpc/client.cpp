@@ -58,15 +58,15 @@ Result Client::call(const std::string& function_name, Args... args) {
                 }
             } else if (response.type == MessageType::Error) {
                 if constexpr (!std::is_void_v<Result>) {
-                    return Result{};
+                    return Result{}; // Return default value for non-void types
                 }
             }
         }
     }
+    // Return default value for non-void types
     if constexpr (!std::is_void_v<Result>) {
         return Result{};
     }
-    return;
 }
 
 template<typename... Args>
