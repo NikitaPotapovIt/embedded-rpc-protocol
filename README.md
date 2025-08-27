@@ -1,283 +1,258 @@
-# Embedded RPC over UART на C++
+# Встроенный RPC через UART для STM32F411RE
 
-**Язык:** C++17/20 (с ограничениями для embedded)
-**Платформа:** Любой микроконтроллер (ARM Cortex-M, ESP32, RISC-V)
-**Интерфейс:** UART (Universal Asynchronous Receiver-Transmitter)
-**RTOS:** FreeRTOS (с C++ обертками)
+Этот проект реализует протокол **удалённого вызова процедур (RPC)** через UART, обеспечивая бесшовный вызов функций между хостом (клиентом) и устройством STM32F411RE (сервером) с использованием FreeRTOS. Проект разработан для платы **Nucleo-F411RE**, использует **C++17** с интеграцией FreeRTOS и предоставляет модульную, типобезопасную и расширяемую архитектуру.
 
-## Оглавление
+---
 
-1.  [Архитектурный обзор](#архитектурный-обзор)
-2.  [Ключевые возможности](#ключевые-возможности)
-3.  [Быстрый старт](#быстрый-старт)
-4.  [Структура проекта](#структура-проекта)
-5.  [Детали реализации](#детали-реализации)
-6.  [Анализ и улучшения протокола](#анализ-и-улучшения-протокола)
+## Содержание
+
+- [Архитектурный обзор](#-архитектурный-обзор)
+- [Ключевые возможности](#-ключевые-возможности)
+- [Быстрый старт](#-быстрый-старт)
+- [Структура проекта](#-структура-проекта)
+- [Детали реализации](#-детали-реализации)
+- [Анализ и улучшения протокола](#-анализ-и-улучшения-протокола)
+- [Ограничения](#-ограничения)
+- [Предложения по улучшению](#-предложения-по-улучшению)
+- [Требования к сборке](#-требования-к-сборке)
+- [Заключение](#-заключение)
+
+---
 
 ## Архитектурный обзор
 
-Проект реализует многоуровневый RPC (Remote Procedure Call) протокол, использующий современные возможности C++ для создания типобезопасного и выразительного API. Архитектура спроектирована с учетом ограничений embedded-систем.
+Проект реализует многоуровневый RPC-протокол через UART для надёжной и эффективной коммуникации. Архитектура разделяет функционал на уровни, обеспечивая модульность и масштабируемость.
 
 ```
-┌─────────────────┐    Serialized Data    ┌─────────────────┐
-│   Host/Client   │ ◄───────────────────► │  Device/Server  │
-└─────────────────┘                       └─────────────────┘
+┌─────────────────┐    Сериализованные данные    ┌─────────────────┐
+│   Хост/Клиент   │ ◄─────────────────────────► │ Устройство/Сервер│
+└─────────────────┘                           └─────────────────┘
             │                                      │
-            │ UART Stream                          │ UART Stream
+            │ Поток UART                          │ Поток UART
             ▼                                      ▼
 ┌─────────────────────────┐              ┌─────────────────────────┐
-│ Application Layer       │              │ Application Layer       │
-│  - RPC Client API       │              │  - RPC Service Registry │
-│  - Type-Safe Calls      │              │  - Handler Management   │
+│ Уровень приложения      │              │ Уровень приложения      │
+│  - Реестр функций       │              │  - Обработка в задачах  │
+│  - Типобезопасные обёртки│             │  - Динамическая диспетчеризация │
 ├─────────────────────────┤              ├─────────────────────────┤
-│ Transport Layer         │              │ Transport Layer         │
-│  - Message Serialization│              │  - Message Parsing      │
-│  - Timeout Management   │              │  - Handler Dispatch     │
+│ Транспортный уровень    │              │ Транспортный уровень    │
+│  - Сериализация сообщений│             │  - Парсинг сообщений    │
+│  - Запрос/Ответ         │              │  - Обработка ошибок     │
 ├─────────────────────────┤              ├─────────────────────────┤
-│ Data Link Layer         │              │ Data Link Layer         │
-│  - Packet Framing       │              │  - Packet Deframing     │
-│  - CRC Calculation      │              │  - CRC Validation       │
+│ Канальный уровень       │              │ Канальный уровень       │
+│  - Формирование пакетов │              │  - Дефрейминг потока    │
+│  - Проверка CRC8        │              │  - Byte-Stuffing (опц.) │
 ├─────────────────────────┤              ├─────────────────────────┤
-│ Physical Layer          │              │ Physical Layer          │
-│  - UART Driver          │              │  - UART Driver          │
+│ Физический уровень      │              │ Физический уровень      │
+│  - Драйвер UART (HAL)   │              │  - Асинхронный UART (IT)│
 └─────────────────────────┘              └─────────────────────────┘
 ```
 
+---
+
 ## Ключевые возможности
 
-- **Type-Safe RPC**: Вызов удаленных функций с проверкой типов на этапе компиляции
-- **Zero-Cost Abstractions**: Минимизация накладных расходов через шаблонное метапрограммирование
-- **Memory Safety**: Исключение небезопасных преобразований типов и ручной работы с памятью
-- **Modular Design**: Четкое разделение на уровни с легкой заменяемостью компонентов
-- **Real-Time Ready**: Детерминированное выполнение с предсказуемым потреблением памяти
+- **RPC по имени функции**: Вызов функций удалённо с использованием строковых идентификаторов (например, `add(1, 2)`).
+- **Поддержка возвращаемых значений**: Результаты передаются обратно клиенту.
+- **Интеграция с FreeRTOS**: Обработка запросов в выделенной задаче FreeRTOS.
+- **Совместимость с FPU**: Поддержка операций с `float` через аппаратный FPU Cortex-M4F.
+- **Модульная архитектура**: Разделение на протокол, RPC-логику и драйверы для удобства поддержки.
+- **C++17**: Использование `std::tuple`, `std::function`, лямбда-выражений и `constexpr`.
+
+---
 
 ## Быстрый старт
 
-### 1. Регистрация RPC обработчика
+### 1. Регистрация обработчиков
+Регистрируйте функции на стороне сервера для обработки входящих RPC-запросов.
 
 ```cpp
-// Объявляем обработчик с типобезопасной сигнатурой
-auto temperature_handler = [](SensorId id, Precision prec) -> Temperature {
-    return read_temperature(id, prec);
-};
-
-// Регистрируем в сервисе
-RPCService::instance().register_handler(
-    "get_temperature", // имя метода
-    temperature_handler // любой callable объект
-);
+// В main.cpp
+service.register_handler("add", &add);
+service.register_handler("get_temperature", &get_temperature);
+service.register_handler("set_led", &set_led);
 ```
 
-### 2. Вызов удаленной процедуры
+**Примеры функций**:
+```cpp
+int32_t add(int32_t a, int32_t b);
+float get_temperature();
+void set_led(bool state);
+```
+
+### 2. Вызов удалённых функций
+Вызывайте функции с клиента и получайте результаты.
 
 ```cpp
-// Клиентский код
-auto result = RPCClient::call<Temperature>(
-    "get_temperature", // имя метода
-    SensorId::CORE,    // аргумент 1
-    Precision::HIGH    // аргумент 2
-);
-
-if (result) {
-    Temperature temp = *result;
-    // работаем с результатом
+int32_t result;
+if (client.call("add", std::make_tuple(5, 3), result)) {
+    // Успех: result = 8
+} else {
+    // Ошибка: таймаут или функция не найдена
 }
 ```
 
-### 3. Конфигурация оборудования
+### 3. Запуск задачи обработки
+Запустите цикл обработки на стороне сервера в задаче FreeRTOS.
 
 ```cpp
-int main() {
-    // Инициализация HAL
-    HAL_Init();
-    SystemClock_Config();
-    
-    // Настройка UART
-    UART::Config uart_cfg {
-        .baudrate = 115200,
-        .word_length = DataLength::B8,
-        .stop_bits = StopBits::ONE,
-        .parity = Parity::NONE
-    };
-    auto& uart = UART::get_instance(UART_ID);
-    uart.init(uart_cfg);
-    
-    // Создание задач FreeRTOS
-    xTaskCreate(
-        task_uart_receive,  "UART_Rx",  512, nullptr, 4, nullptr
-    );
-    xTaskCreate(
-        task_process_rpc,   "RPC_Proc", 1024, nullptr, 3, nullptr
-    );
-    
-    vTaskStartScheduler();
-    while (1);
-}
+xTaskCreate([](void* param) {
+    auto* s = static_cast<rpc::Service*>(param);
+    while (true) {
+        s->process();
+        vTaskDelay(1); // Уступаем другим задачам
+    }
+}, "RPC_Service", 256, &service, 1, nullptr);
 ```
+
+---
 
 ## Структура проекта
 
 ```
-include/
-├── rpc/
-│   ├── service.hpp      # RPC сервис (синглтон)
-│   ├── client.hpp       # RPC клиент
-│   ├── serializer.hpp   # Сериализация типов
-│   └── types.hpp        # Basic types
-├── protocol/
-│   ├── packet.hpp       # Пакет канального уровня
-│   ├── parser.hpp       # Конечный автомат парсера
-│   └── crc.hpp          # CRC calculator
-├── drivers/
-│   ├── uart.hpp         # Абстракция UART
-│   └── stm32f4xx_uart.hpp # Специфичная реализация
-└── utils/
-    ├── queue.hpp        # Очередь сообщений
-    ├── allocator.hpp    # Custom allocator
-    └── noncopyable.hpp  # Mixin class
-
-src/
-├── rpc/
-│   ├── service.cpp      # Реализация RPC сервиса
-│   └── serializer.cpp   # Специализации сериализации
-├── protocol/
-│   ├── parser.cpp       # Реализация парсера
-│   └── crc.cpp          # Реализация CRC
-├── drivers/
-│   └── uart.cpp         # Драйвер UART
-└── main.cpp             # Точка входа
+.
+├── include/                 # Заголовочные файлы
+│   ├── drivers/             # Абстракции драйверов
+│   │   └── uart.hpp         # Интерфейс UART
+│   ├── protocol/            # Канальный и транспортный уровни
+│   │   ├── parser.hpp       # Парсер потока байт в пакеты
+│   │   ├── sender.hpp       # Формирование и отправка пакетов
+│   │   └── crc.hpp          # Вычисление CRC8
+│   └── rpc/                 # Логика RPC
+│       ├── client.hpp       # Вызов функций на стороне клиента
+│       └── service.hpp      # Диспетчеризация функций на сервере
+├── src/                     # Исходный код
+│   ├── drivers/
+│   │   └── uart.cpp         # Реализация драйвера UART (HAL)
+│   ├── protocol/
+│   │   ├── parser.cpp
+│   │   ├── sender.cpp
+│   │   └── crc.cpp
+│   ├── rpc/
+│   │   ├── client.cpp
+│   │   └── service.cpp
+│   └── main.cpp             # Точка входа
+├── lib/                     # Внешние библиотеки
+│   └── FreeRTOS/            # FreeRTOS с портом для ARM_CM4F
+├── scripts/                 # Скрипты сборки
+│   └── fix_fpu_flags.py     # Обходной путь для FPU на macOS
+├── platformio.ini           # Конфигурация сборки PlatformIO
+└── README.md                # Этот файл
 ```
+
+---
 
 ## Детали реализации
 
-### Безопасная сериализация
+### Канальный уровень: Надёжная передача
+- **Формат пакета**:
+  ```cpp
+  // 0xFA | l_l | l_h | crc8_hdr | 0xFB | payload | crc8_full | 0xFE
+  ```
+- **Синхронизация**: Маркеры `0xFA`, `0xFB`, `0xFE` обеспечивают определение границ пакета.
+- **Длина пакета**: 2 байта (до 65 535 байт).
+- **CRC8**: Проверка целостности заголовка и всего пакета.
+- **Парсер**: Конечный автомат для преобразования потока байт в пакеты.
 
-```cpp
-// Специализация сериализатора для пользовательских типов
-template<>
-struct Serializer<Temperature> {
-    static std::array<uint8_t, sizeof(Temperature)> serialize(const Temperature& temp) {
-        std::array<uint8_t, sizeof(Temperature)> data;
-        std::memcpy(data.data(), &temp, sizeof(Temperature));
-        return data;
-    }
-    
-    static Temperature deserialize(const std::span<const uint8_t>& data) {
-        Temperature temp;
-        std::memcpy(&temp, data.data(), sizeof(Temperature));
-        return temp;
-    }
-};
-```
+### Транспортный уровень: Логика RPC
+- **Формат сообщения**:
+  ```cpp
+  // type | seq | name\0 | args...
+  ```
+- **Типы сообщений**: `0x0B` (запрос), `0x0C` (ответ), `0x21` (ошибка).
+- **Порядковый номер**: Для сопоставления запросов и ответов.
+- **Имена функций**: Строки с завершающим нулем.
+- **Аргументы**: Сериализуются как сырые байты.
 
-### Статическая диспетчеризация
+### Интеграция с FreeRTOS
+- Используется `HAL_SYSTICK_Callback()` для совместимости с `HAL_Delay()`.
+- Исключено дублирование обработчиков (`vPortSVCHandler`, `xPortPendSVHandler`) — используется только `port.c`.
 
-```cpp
-// Вызов обработчика с автоматической десериализацией
-template<typename Handler, typename... Args>
-auto invoke_handler(Handler&& handler, const Packet& packet) {
-    auto args_tuple = deserialize_args<std::tuple<Args...>>(packet.data());
-    return std::apply(handler, args_tuple);
-}
-```
-
-### Управление памятью
-
-```cpp
-// Static allocator для исключения динамической памяти
-template<typename T, size_t Size>
-class StaticAllocator {
-public:
-    using value_type = T;
-    
-    T* allocate(size_t n) {
-        if (n > (Size - m_index)) {
-            return nullptr; // Better error handling
-        }
-        T* ptr = &m_buffer[m_index];
-        m_index += n;
-        return ptr;
-    }
-    
-    void deallocate(T* p, size_t n) noexcept {
-        // Memory is reused only on reset
-    }
-
-private:
-    std::array<T, Size> m_buffer;
-    size_t m_index{0};
-};
-
-// Использование статического аллокатора
-using PacketQueue = Queue<Packet, 32, StaticAllocator<Packet, 32>>;
-```
+---
 
 ## Анализ и улучшения протокола
 
-### Недостатки исходного протокола
-
-1.  **Низкая эффективность**: Высокие накладные расходы (14+ байт на пакет)
-2.  **Уязвимость к сбоям**: Отсутствие экранирования служебных байт
-3.  **Слабый CRC**: CRC8 недостаточен для надежного контроля целостности
-4.  **Строковые идентификаторы**: Неэффективный поиск и большой overhead
+### Текущие ограничения
+- **Отсутствие таймаута**: Клиент может зависнуть при потере ответа.
+- **Поиск по строкам**: Медленный поиск с использованием `strcmp`.
+- **Отсутствие проверки типов аргументов**: Риск неопределённого поведения (например, `add("hello", 5)`).
+- **Слабый CRC8**: Вероятность пропуска ошибки — 1/256.
+- **Отсутствие контроля потока**: Риск переполнения буфера при высокой нагрузке.
+- **Блокирующий `call()`**: Может мешать другим задачам.
 
 ### Реализованные улучшения
+- **Поддержка FPU**: Включена через `build_flags` и `extra_scripts` для операций с `float`.
+- **Исключение дублирования обработчиков**: Удалены `SVC_Handler`, `PendSV_Handler` из `stm32f4xx_it.c`.
+- **Кроссплатформенность**: Сборка на macOS, Windows и Linux через PlatformIO.
+- **Подавление предупреждений**: Используется `-specs=nosys.specs` для устранения предупреждений о `_write`, `_close` и т.д.
 
-1.  **Бинарные идентификаторы**:
-    ```cpp
-    // Вместо строки - 16-битный идентификатор
-    enum class FunctionID : uint16_t {
-        GET_TEMPERATURE = 0x01,
-        SET_CONFIG      = 0x02,
-        // ...
-    };
-    ```
+---
 
-2.  **Усиленный контроль целостности**:
-    ```cpp
-    // CRC16 вместо CRC8
-    class CRC16 {
-    public:
-        static constexpr uint16_t calculate(std::span<const uint8_t> data) {
-            uint16_t crc = 0xFFFF;
-            for (uint8_t byte : data) {
-                crc ^= byte;
-                for (uint8_t i = 0; i < 8; ++i) {
-                    crc = (crc & 0x0001) ? (crc >> 1) ^ 0xA001 : (crc >> 1);
-                }
-            }
-            return crc;
-        }
-    };
-    ```
+## Ограничения
+- **Отсутствие таймаута в `call()`**: Может блокировать задачу навсегда.
+- **Поиск O(n)**: Медленный при 100+ функциях.
+- **Отсутствие валидации аргументов**: Ошибки типов приводят к неопределённому поведению.
+- **Ограничение размера пакета**: 64 КБ может быть недостаточно для больших данных.
+- **Отсутствие поддержки массивов**: Только структуры фиксированного размера.
+- **Полудуплексный UART**: Без контроля потока возможна потеря данных.
 
-3.  **Оптимизированный формат пакета**:
-    ```
-    [SYNC][LEN][FID][TYPE][SEQ][DATA...][CRC16]
-    ```
+---
 
-### Требования к сборке
+## Предложения по улучшению
+- **Таймаут ответа**: Добавить `client.call(..., timeout_ms)` для надёжности.
+- **Хеширование имён функций**: Использовать `crc16("add")` для поиска за O(1).
+- **Валидация типов аргументов**: Добавить байт типа (`int32`, `float`, `bool`).
+- **Асинхронные вызовы**: Реализовать `call_async(name, args, callback)`.
+- **Буферизация пакетов**: Использовать очередь исходящих пакетов.
+- **Усиление CRC**: Перейти на CRC16 для лучшей защиты от ошибок.
+- **Поддержка потоков**: Добавить тип `0x16` для потоковых данных (например, логов).
+- **Сериализация**: Использовать FlatBuffers или Cap'n Proto для структурированных данных.
+- **Поддержка массивов**: Добавить префикс длины в полезную нагрузку.
 
-```cmake
-# Минимальные требования компилятора
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+---
 
-# Флаги для embedded
-add_compile_options(
-    -ffunction-sections
-    -fdata-sections
-    -fno-exceptions
-    -fno-rtti
-    -fno-use-cxa-atexit
-)
+## Требования к сборке
 
-# Линковка
-add_link_options(
-    -Wl,--gc-sections
-    -specs=nano.specs
-    -specs=nosys.specs
-)
+```ini
+[env:nucleo_f411re]
+platform = ststm32
+board = nucleo_f411re
+framework = stm32cube
+
+board_build.link_flags =
+    --specs=nosys.specs
+    --specs=nano.specs
+
+build_flags =
+    -DUSE_HAL_DRIVER
+    -DSTM32F411xE
+    -std=c++17
+    -mcpu=cortex-m4
+    -mthumb
+    -mfpu=fpv4-sp-d16
+    -mfloat-abi=hard
+    -I$PROJECT_DIR/include
+    -I$PROJECT_DIR/lib/FreeRTOS/include
+    -I$PROJECT_DIR/lib/FreeRTOS/portable/GCC/ARM_CM4F
+
+build_unflags =
+    -mfloat-abi=soft
+    -mfloat-abi=softfp
+    -mfloat-abi=hard
+    -mfpu=*
+
+lib_extra_dirs = $PROJECT_DIR/lib
+lib_archive = no
 ```
 
-Проект демонстрирует современный подход к embedded-разработке на C++ с акцентом на безопасность типов, нулевые overheads и модульность архитектуры.
+---
+
+## Заключение
+
+Проект представляет собой полноценную реализацию **RPC-протокола через UART** для STM32F411RE с интеграцией **FreeRTOS** и использованием **C++17**:
+- Реализован RPC-протокол через UART.
+- Использована обработка в задачах FreeRTOS.
+- Поддерживается кроссплатформенная сборка через PlatformIO.
+- Предоставлены исходный код и документация.
+
+Дизайн демонстрирует современные принципы embedded-разработки: **типобезопасность**, **модульность** и глубокое понимание низкоуровневых деталей (FPU, флаги компиляции). Будущие улучшения могут устранить текущие ограничения, сделав протокол ещё более надёжным и универсальным.

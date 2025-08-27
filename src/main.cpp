@@ -112,3 +112,7 @@ void Error_Handler(void) {
     __disable_irq();
     while (1) {}
 }
+
+extern "C" void HAL_SYSTICK_Callback(void) {
+    
+}

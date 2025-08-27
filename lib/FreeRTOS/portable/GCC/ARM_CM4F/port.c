@@ -445,6 +445,7 @@ void xPortPendSVHandler( void )
 
     __asm volatile
     (
+        "	.fpu fpv4-sp-d16					\n"  // 🔥 Включаем FPU явно
         "	mrs r0, psp							\n"
         "	isb									\n"
         "										\n"
