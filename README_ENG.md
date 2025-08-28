@@ -134,8 +134,6 @@ xTaskCreate([](void* param) {
 │   └── main.cpp             # Entry point
 ├── lib/                     # External libraries
 │   └── FreeRTOS/            # FreeRTOS with ARM_CM4F port
-├── scripts/                 # Build scripts
-│   └── fix_fpu_flags.py     # Workaround for FPU on macOS
 ├── platformio.ini           # PlatformIO build configuration
 └── README.md                # This file
 ```

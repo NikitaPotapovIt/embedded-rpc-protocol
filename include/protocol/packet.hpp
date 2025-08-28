@@ -1,9 +1,25 @@
 #pragma once
 #include <cstdint>
 #include <string>
-#include "../rpc/types.hpp"  // Правильный путь
+#include "../rpc/types.hpp"
 
 namespace protocol {
+
+/**
+ * Структура бинарного пакета протокола с заголовком и контрольными суммами
+ * 
+ * Структура пакета в бинарном виде:
+ * [0]    = 0xFA              - стартовый байт (предположительно)
+ * [1]    = length_low        - младший байт длины данных
+ * [2]    = length_high       - старший байт длины данных  
+ * [3]    = header_crc        - CRC заголовка (байты 0-2)
+ * [4]    = sequence          - порядковый номер пакета
+ * [5..N] = data              - полезные данные
+ * [N+1]  = data_crc          - CRC полезных данных
+ * 
+ * Порядок байтов: little-endian (l_l | l_h << 8)
+ */
+
 struct Packet {
     static constexpr std::size_t MaxSize = 64;
     bool valid{false};
